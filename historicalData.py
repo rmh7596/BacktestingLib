@@ -4,6 +4,7 @@ from ibapi.contract import Contract
 import time
 import requests
 import json
+import pandas as pd
 
 class TradeApp(EWrapper, EClient): 
     def __init__(self): 
@@ -11,12 +12,17 @@ class TradeApp(EWrapper, EClient):
         self.nextValidOrderId = None
         self.permId2ord = {}
         self.cashbalance = 0
+        self.data = []
 
     @iswrapper
     def nextValidId(self, orderId:int):
         super().nextValidId(orderId)
         logging.debug("setting nextValidOrderId: %d", orderId)
         self.nextValidOrderId = orderId
+    
+    def nextId(self):
+        self.nextValidOrderId += 1
+        return self.nextValidOrderId
 
     def EurUsdFx(self):
         #! [cashcontract]
@@ -45,6 +51,7 @@ class TradeApp(EWrapper, EClient):
         contract.secType = "STK"
         contract.currency = "USD"
         contract.exchange = "SMART"
+        contract.primaryExchange = "NASDAQ"
         return contract
     
     def USOptionContract(self, sym, right, strike, expiration):
@@ -65,16 +72,12 @@ class TradeApp(EWrapper, EClient):
         print(reqId, headTimestamp)
     
     def tickPrice(self, reqId: TickerId, tickType: TickType, price: float, attrib: TickAttrib):
-        tick_type = TickTypeEnum.to_str(tickType)
-        if tick_type == "BID":
-            self.bid = price
-            print("self.bid", self.bid)
-        if tick_type == "ASK":
-            self.ask = price
-            print("self.ask", self.ask)
+        print(f"requID: {reqId}, tickType: {TickTypeEnum.to_str(tickType)}, price: {price}")
     
     def historicalData(self, reqId, bar):
-        print("HistoricalData. ReqId:", reqId, "BarData.", bar)
+        self.data.append([bar.date, bar.open, bar.close])
+
+        #print("Date", bar.date, "Open", bar.open, "Close", bar.close, "Volume", bar.volume)
 
     def historicalSchedule(self, reqId: int, startDateTime: str, endDateTime: str, timeZone: str, sessions: ListOfHistoricalSessions):
         print("HistoricalSchedule. ReqId:", reqId, "Start:", startDateTime, "End:", endDateTime, "TimeZone:", timeZone)
@@ -86,19 +89,22 @@ class TradeApp(EWrapper, EClient):
     
     def historicalDataEnd(self, reqId: int, start: str, end: str):
         print("HistoricalDataEnd. ReqId:", reqId, "from", start, "to", end)
+        df = pd.DataFrame(self.data)
+        df.columns=["time", "open", "close"]
+        print(df)
+        df.to_csv('sqqq.csv')
 
-# For historical data
-#app.reqHeadTimeStamp(1, app.EurUsdFx(), "BID_ASK", 1, 1)
 
 def get_stock_history(app: TradeApp, stock):
     #app.reqMarketDataType(1)
     #app.reqMktData(1, app.USStock(stock), "", True, False, []) # Only want one snapshot price
-    app.reqHistoricalData(reqId=101, 
-                          contract=app.USStock(stock),
+    app.reqHeadTimeStamp(1, app.etf(stock), "BID_ASK", 1, 1)
+    app.reqHistoricalData(reqId=1, 
+                          contract=app.etf(stock),
                           endDateTime='', # up until the current moment
-                          durationStr='1 D',
-                          barSizeSetting='1 hour',
-                          whatToShow='Trades',
+                          durationStr='14 Y',
+                          barSizeSetting='30 mins',
+                          whatToShow='BID_ASK',
                           useRTH=0,                 #0 = Includes data outside of RTH | 1 = RTH data only 
                           formatDate=1,    
                           keepUpToDate=0,           #0 = False | 1 = True 
@@ -111,7 +117,7 @@ def main():
     app.connect("127.0.0.1", 4001, clientId=0)
     time.sleep(1)
     # Function for what we wanna do
-    get_stock_history(app, "TSLA")
+    get_stock_history(app, "SQQQ")
     time.sleep(1)
     app.run()
 
